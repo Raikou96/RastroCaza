@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#1f3a2a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="RastroCaza">
+  <title>RastroCaza</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="phone-frame">
+      <div class="phone-glow"></div>
+      <div class="app-screen">
+        <header class="hero">
+          <div class="hero__top">
+            <div>
+              <h1>RastroCaza</h1>
+            </div>
+          </div>
+
+          <div class="hero__content">
+            <div>
+              <p class="hero__label">Batida activa</p>
+              <h2 id="hero-hunt-title">Batida de Los Llanos</h2>
+              <p class="hero__meta" id="hero-hunt-meta">Cuadrilla Sierra Norte · Sierra de Gredos</p>
+            </div>
+
+            <div class="hero__stats">
+              <article>
+                <span>Total piezas</span>
+                <strong id="total-captures">0</strong>
+              </article>
+              <article>
+                <span>Más activo</span>
+                <strong id="top-hunter">Sin dato</strong>
+              </article>
+            </div>
+          </div>
+        </header>
+
+        <section class="status-bar">
+          <span class="status-pill" id="connection-pill">Comprobando red...</span>
+          <div class="status-bar__actions">
+            <span class="status-pill status-pill--soft" id="storage-pill">Datos locales y medios en nube</span>
+            <button class="status-pill" id="logout-button" type="button">Salir</button>
+          </div>
+        </section>
+
+        <nav class="segmented-nav" aria-label="Secciones">
+          <button class="segmented-nav__item is-active" type="button" data-panel-target="panel-cuadrilla">Cuadrilla</button>
+          <button class="segmented-nav__item" type="button" data-panel-target="panel-registro">Registro</button>
+          <button class="segmented-nav__item" type="button" data-panel-target="panel-resumen">Resumen</button>
+        </nav>
+
+        <section class="panel-stack">
+          <article class="panel is-active" id="panel-cuadrilla">
+            <section class="editor-card">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Configuración</p>
+                  <h3>Batida actual</h3>
+                </div>
+              </div>
+
+              <form class="stack-form" id="settings-form">
+                <label>
+                  <span>Nombre de la cuadrilla</span>
+                  <input id="squad-name" name="squadName" type="text" maxlength="50" placeholder="Ej. Cuadrilla Sierra Norte" required>
+                </label>
+                <label>
+                  <span>Nombre de la batida</span>
+                  <input id="hunt-title" name="huntTitle" type="text" maxlength="60" placeholder="Ej. Batida de Los Llanos" required>
+                </label>
+                <div class="inline-fields">
+                  <label>
+                    <span>Lugar</span>
+                    <input id="hunt-location" name="location" type="text" maxlength="50" placeholder="Ej. Sierra de Gredos">
+                  </label>
+                  <label>
+                    <span>Fecha</span>
+                    <input id="hunt-date" name="huntDate" type="date" required>
+                  </label>
+                </div>
+                <button class="secondary-button" type="submit">Guardar cambios</button>
+                <p class="form-feedback" id="settings-feedback" hidden>Cambios guardados.</p>
+              </form>
+            </section>
+
+            <section class="editor-card">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Equipo</p>
+                  <h3>Gestionar cazadores</h3>
+                </div>
+              </div>
+
+              <form class="stack-form" id="hunter-form">
+                <input id="hunter-id" name="hunterId" type="hidden">
+                <label>
+                  <span>Nombre del cazador</span>
+                  <input id="hunter-name" name="hunterName" type="text" maxlength="50" placeholder="Añade un cazador" required>
+                </label>
+                <label>
+                  <span>Foto del cazador</span>
+                  <input id="hunter-photo" name="hunterPhoto" type="file" accept="image/*">
+                </label>
+                <div class="image-preview" id="hunter-photo-preview" hidden>
+                  <img id="hunter-photo-preview-image" alt="Vista previa del cazador">
+                </div>
+                <div class="action-row">
+                  <button class="primary-button" id="hunter-submit" type="submit">Añadir cazador</button>
+                  <button class="secondary-button" id="hunter-cancel" type="button" hidden>Cancelar</button>
+                </div>
+              </form>
+
+              <div class="hunter-list" id="hunter-list"></div>
+              <p class="empty-state" id="hunter-empty" hidden>Empieza creando la cuadrilla con al menos un cazador.</p>
+            </section>
+          </article>
+
+          <article class="panel" id="panel-registro">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Alta rápida</p>
+                <h3>Registrar pieza</h3>
+              </div>
+              <span class="status-pill" id="capture-status-pill">Listo para campo</span>
+            </div>
+
+            <form class="capture-form" id="capture-form">
+              <label>
+                <span>Cazador</span>
+                <select id="hunter-select" name="hunterId" required></select>
+              </label>
+
+              <label>
+                <span>Animal</span>
+                <div class="animal-grid" id="animal-grid" role="radiogroup" aria-label="Tipo de animal">
+                  <button class="animal-chip is-selected" type="button" data-animal="Jabalí">Jabalí</button>
+                  <button class="animal-chip" type="button" data-animal="Zorro">Zorro</button>
+                  <button class="animal-chip" type="button" data-animal="Cabra">Cabra</button>
+                  <button class="animal-chip" type="button" data-animal="Ciervo">Ciervo</button>
+                </div>
+              </label>
+
+              <label>
+                <span>Cantidad</span>
+                <div class="stepper">
+                  <button class="stepper__button" type="button" data-step="-1">-</button>
+                  <input id="count-input" name="count" type="number" min="1" value="1" required>
+                  <button class="stepper__button" type="button" data-step="1">+</button>
+                </div>
+              </label>
+
+              <label>
+                <span>Notas opcionales</span>
+                <textarea id="capture-notes" name="notes" rows="3" placeholder="Ej. vaguada norte, zona alta, con testigo"></textarea>
+              </label>
+
+              <label>
+                <span>Imagen de la captura</span>
+                <input id="capture-photo" name="capturePhoto" type="file" accept="image/*">
+              </label>
+              <div class="image-preview image-preview--wide" id="capture-photo-preview" hidden>
+                <img id="capture-photo-preview-image" alt="Vista previa de la captura">
+              </div>
+
+              <button class="primary-button" id="capture-submit" type="submit">Guardar registro</button>
+            </form>
+          </article>
+
+          <article class="panel" id="panel-resumen">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Cierre de batida</p>
+                <h3>Resumen y archivo</h3>
+              </div>
+              <button class="ghost-button ghost-button--dark" id="export-button" type="button">Exportar JSON</button>
+            </div>
+
+            <div class="summary-grid" id="summary-grid"></div>
+
+            <section class="timeline">
+              <div class="timeline__header">
+                <h4>Actividad reciente</h4>
+                <small id="timeline-caption">Actualizada al instante</small>
+              </div>
+              <div class="timeline__list" id="timeline-list"></div>
+            </section>
+
+            <section class="editor-card editor-card--tight">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Historial</p>
+                  <h3>Batidas guardadas</h3>
+                </div>
+              </div>
+              <div class="action-row action-row--stack-mobile">
+                <button class="secondary-button" id="archive-button" type="button">Guardar en historial</button>
+                <button class="secondary-button secondary-button--danger" id="reset-button" type="button">Nueva batida</button>
+              </div>
+              <div class="inline-fields inline-fields--history">
+                <label>
+                  <span>Desde</span>
+                  <input id="history-from" type="date">
+                </label>
+                <label>
+                  <span>Hasta</span>
+                  <input id="history-to" type="date">
+                </label>
+              </div>
+              <div class="history-list" id="history-list"></div>
+              <p class="empty-state" id="history-empty" hidden>Todavía no has guardado ninguna batida en el historial.</p>
+              <div class="history-detail" id="history-detail" hidden></div>
+            </section>
+          </article>
+        </section>
+
+        <nav class="bottom-nav" aria-label="Navegación principal">
+          <button class="bottom-nav__item is-active" type="button" data-panel-target="panel-cuadrilla">
+            <span>Cuadrilla</span>
+          </button>
+          <button class="bottom-nav__item" type="button" data-panel-target="panel-registro">
+            <span>Registrar</span>
+          </button>
+          <button class="bottom-nav__item" type="button" data-panel-target="panel-resumen">
+            <span>Resumen</span>
+          </button>
+        </nav>
+      </div>
+    </section>
+  </main>
+
+  <template id="hunter-card-template">
+    <article class="hunter-card">
+      <button class="hunter-card__select" type="button">
+        <span class="hunter-card__avatar"></span>
+        <span class="hunter-card__info">
+          <strong></strong>
+          <small><span class="hunter-card__count">0</span> capturas registradas</small>
+        </span>
+        <span class="hunter-card__badge">Sin piezas</span>
+      </button>
+      <div class="hunter-card__actions">
+        <button class="mini-button" type="button" data-action="edit">Editar</button>
+        <button class="mini-button mini-button--danger" type="button" data-action="delete">Borrar</button>
+      </div>
+    </article>
+  </template>
+
+  <template id="summary-card-template">
+    <article class="summary-card">
+      <span></span>
+      <strong>0</strong>
+      <small></small>
+    </article>
+  </template>
+
+  <template id="timeline-item-template">
+    <article class="timeline__item">
+      <span class="timeline__time"></span>
+      <div>
+        <strong></strong>
+        <p></p>
+        <img class="timeline__photo" alt="Imagen de la captura" hidden>
+      </div>
+    </article>
+  </template>
+
+  <template id="history-item-template">
+    <article class="history-card">
+      <div class="history-card__meta">
+        <strong></strong>
+        <small></small>
+      </div>
+      <span class="history-card__total"></span>
+    </article>
+  </template>
+
+  <template id="history-detail-template">
+    <article class="history-detail-card">
+      <div class="history-detail-card__header">
+        <div>
+          <p class="eyebrow">Detalle de batida</p>
+          <h4 class="history-detail-card__title"></h4>
+        </div>
+        <span class="history-detail-card__badge"></span>
+      </div>
+      <p class="history-detail-card__meta"></p>
+      <div class="summary-grid history-detail-card__summary"></div>
+      <div class="history-detail-card__hunters"></div>
+      <div class="history-detail-card__captures"></div>
+    </article>
+  </template>
+
+  <script src="app.js"></script>
+</body>
+</html>

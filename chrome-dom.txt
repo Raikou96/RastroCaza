@@ -1,0 +1,4 @@
+[0315/225019.243:ERROR:third_party\crashpad\crashpad\util\win\registration_protocol_win.cc:108] CreateFile: Acceso denegado. (0x5)
+[14544:17020:0315/225019.435:FATAL:mojo\public\cpp\platform\platform_channel.cc:108] Check failed: . : Acceso denegado. (0x5)
+[0315/225019.435:ERROR:third_party\crashpad\crashpad\client\crashpad_client_win.cc:142] crash server failed to launch, self-terminating
+[14544:29004:0315/225019.439:ERROR:chrome\installer\util\google_update_settings.cc:265] Failed opening key Software\Google\Update\ClientStateMedium\{8A69D345-D564-463c-AFF1-A69D9E530F96} to set usagestats; result: 5

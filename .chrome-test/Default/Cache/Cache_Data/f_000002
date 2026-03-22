@@ -1,0 +1,893 @@
+const STORAGE_KEY = "rastrocaza-state-v3";
+const SPECIES = ["Jabalí", "Zorro", "Cabra", "Ciervo"];
+
+const segmentedButtons = document.querySelectorAll(".segmented-nav__item");
+const bottomNavButtons = document.querySelectorAll(".bottom-nav__item");
+const panels = document.querySelectorAll(".panel");
+const settingsForm = document.querySelector("#settings-form");
+const squadNameInput = document.querySelector("#squad-name");
+const huntTitleInput = document.querySelector("#hunt-title");
+const huntLocationInput = document.querySelector("#hunt-location");
+const huntDateInput = document.querySelector("#hunt-date");
+const hunterForm = document.querySelector("#hunter-form");
+const hunterList = document.querySelector("#hunter-list");
+const hunterEmpty = document.querySelector("#hunter-empty");
+const hunterIdInput = document.querySelector("#hunter-id");
+const hunterNameInput = document.querySelector("#hunter-name");
+const hunterPhotoInput = document.querySelector("#hunter-photo");
+const hunterPhotoPreview = document.querySelector("#hunter-photo-preview");
+const hunterPhotoPreviewImage = document.querySelector("#hunter-photo-preview-image");
+const hunterSubmit = document.querySelector("#hunter-submit");
+const hunterCancel = document.querySelector("#hunter-cancel");
+const captureForm = document.querySelector("#capture-form");
+const hunterSelect = document.querySelector("#hunter-select");
+const animalChips = document.querySelectorAll(".animal-chip");
+const countInput = document.querySelector("#count-input");
+const stepButtons = document.querySelectorAll("[data-step]");
+const capturePhotoInput = document.querySelector("#capture-photo");
+const capturePhotoPreview = document.querySelector("#capture-photo-preview");
+const capturePhotoPreviewImage = document.querySelector("#capture-photo-preview-image");
+const summaryGrid = document.querySelector("#summary-grid");
+const timelineList = document.querySelector("#timeline-list");
+const timelineCaption = document.querySelector("#timeline-caption");
+const historyList = document.querySelector("#history-list");
+const historyEmpty = document.querySelector("#history-empty");
+const historyFromInput = document.querySelector("#history-from");
+const historyToInput = document.querySelector("#history-to");
+const historyDetail = document.querySelector("#history-detail");
+const archiveButton = document.querySelector("#archive-button");
+const resetButton = document.querySelector("#reset-button");
+const exportButton = document.querySelector("#export-button");
+const connectionPill = document.querySelector("#connection-pill");
+const captureStatusPill = document.querySelector("#capture-status-pill");
+const storagePill = document.querySelector("#storage-pill");
+const settingsFeedback = document.querySelector("#settings-feedback");
+const heroHuntTitle = document.querySelector("#hero-hunt-title");
+const heroHuntMeta = document.querySelector("#hero-hunt-meta");
+const totalCaptures = document.querySelector("#total-captures");
+const topHunter = document.querySelector("#top-hunter");
+const hunterCardTemplate = document.querySelector("#hunter-card-template");
+const summaryCardTemplate = document.querySelector("#summary-card-template");
+const timelineItemTemplate = document.querySelector("#timeline-item-template");
+const historyItemTemplate = document.querySelector("#history-item-template");
+const historyDetailTemplate = document.querySelector("#history-detail-template");
+
+let selectedAnimal = "Jabalí";
+let pendingHunterPhoto = "";
+let pendingCapturePhoto = "";
+let selectedHistoryId = "";
+let settingsFeedbackTimeout = null;
+let state = loadState();
+
+render();
+bindEvents();
+registerServiceWorker();
+updateConnectivityUI();
+
+function bindEvents() {
+  [...segmentedButtons, ...bottomNavButtons].forEach((button) => {
+    button.addEventListener("click", () => {
+      const targetId = button.dataset.panelTarget;
+      if (targetId) {
+        activatePanel(targetId);
+      }
+    });
+  });
+
+  settingsForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+
+    const formData = new FormData(settingsForm);
+    state.currentHunt.squadName = String(formData.get("squadName") || "").trim() || state.currentHunt.squadName;
+    state.currentHunt.huntTitle = String(formData.get("huntTitle") || "").trim() || state.currentHunt.huntTitle;
+    state.currentHunt.location = String(formData.get("location") || "").trim();
+    state.currentHunt.huntDate = String(formData.get("huntDate") || state.currentHunt.huntDate);
+
+    persistAndRender();
+    showSettingsFeedback();
+  });
+
+  hunterPhotoInput.addEventListener("change", async () => {
+    pendingHunterPhoto = await readImageInput(hunterPhotoInput, 640);
+    updateImagePreview(hunterPhotoPreview, hunterPhotoPreviewImage, pendingHunterPhoto, "Vista previa del cazador");
+  });
+
+  capturePhotoInput.addEventListener("change", async () => {
+    pendingCapturePhoto = await readImageInput(capturePhotoInput, 1280);
+    updateImagePreview(capturePhotoPreview, capturePhotoPreviewImage, pendingCapturePhoto, "Vista previa de la captura");
+  });
+
+  hunterForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    const name = hunterNameInput.value.trim();
+    if (!name) {
+      return;
+    }
+
+    const hunterId = hunterIdInput.value;
+    if (hunterId) {
+      const hunter = state.currentHunt.hunters.find((item) => item.id === hunterId);
+      if (hunter) {
+        hunter.name = name;
+        if (pendingHunterPhoto) {
+          hunter.photo = pendingHunterPhoto;
+        }
+      }
+
+      state.currentHunt.captures.forEach((capture) => {
+        if (capture.hunterId === hunterId) {
+          capture.hunterName = name;
+          const updatedHunter = state.currentHunt.hunters.find((item) => item.id === hunterId);
+          capture.hunterPhoto = updatedHunter?.photo || "";
+        }
+      });
+    } else {
+      const newHunter = {
+        id: createId(),
+        name,
+        photo: pendingHunterPhoto
+      };
+
+      state.currentHunt.hunters.push(newHunter);
+      state.currentHunt.selectedHunterId = newHunter.id;
+    }
+
+    resetHunterForm();
+    persistAndRender();
+  });
+
+  hunterCancel.addEventListener("click", () => {
+    resetHunterForm();
+  });
+
+  hunterList.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+
+    const card = target.closest("[data-hunter-id]");
+    if (!(card instanceof HTMLElement)) {
+      return;
+    }
+
+    const hunterId = card.dataset.hunterId;
+    if (!hunterId) {
+      return;
+    }
+
+    const action = target.dataset.action;
+    if (action === "edit") {
+      startEditingHunter(hunterId);
+      return;
+    }
+
+    if (action === "delete") {
+      deleteHunter(hunterId);
+      return;
+    }
+
+    state.currentHunt.selectedHunterId = hunterId;
+    persistAndRender();
+  });
+
+  animalChips.forEach((chip) => {
+    chip.addEventListener("click", () => {
+      animalChips.forEach((item) => item.classList.remove("is-selected"));
+      chip.classList.add("is-selected");
+      selectedAnimal = chip.dataset.animal || "Jabalí";
+    });
+  });
+
+  stepButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const step = Number(button.dataset.step || 0);
+      const nextValue = Math.max(1, Number(countInput.value || 1) + step);
+      countInput.value = String(nextValue);
+    });
+  });
+
+  captureForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+
+    if (!state.currentHunt.hunters.length) {
+      return;
+    }
+
+    const formData = new FormData(captureForm);
+    const hunterId = String(formData.get("hunterId") || "");
+    const hunter = state.currentHunt.hunters.find((item) => item.id === hunterId);
+    if (!hunter) {
+      return;
+    }
+
+    const count = Math.max(1, Number(formData.get("count") || 1));
+    const notes = String(formData.get("notes") || "").trim();
+    const timestamp = new Date().toISOString();
+
+    state.currentHunt.captures.unshift({
+      id: createId(),
+      hunterId,
+      hunterName: hunter.name,
+      hunterPhoto: hunter.photo || "",
+      animal: selectedAnimal,
+      count,
+      notes,
+      photo: pendingCapturePhoto,
+      timestamp
+    });
+    state.currentHunt.selectedHunterId = hunterId;
+
+    resetCaptureForm();
+    persistAndRender();
+    activatePanel("panel-resumen");
+  });
+
+  archiveButton.addEventListener("click", () => {
+    const current = state.currentHunt;
+    const summary = getDerivedData(current);
+    const snapshot = {
+      id: createId(),
+      squadName: current.squadName,
+      huntTitle: current.huntTitle,
+      location: current.location,
+      huntDate: current.huntDate,
+      savedAt: new Date().toISOString(),
+      hunters: current.hunters,
+      captures: current.captures,
+      totalCaptures: summary.totalCaptures,
+      topHunter: summary.topHunterName,
+      speciesTotals: summary.speciesTotals
+    };
+
+    state.history.unshift(snapshot);
+    selectedHistoryId = snapshot.id;
+    persistAndRender();
+  });
+
+  resetButton.addEventListener("click", () => {
+    state.currentHunt = createEmptyCurrentHunt(state.currentHunt.hunters);
+    resetHunterForm();
+    resetCaptureForm();
+    persistAndRender();
+    activatePanel("panel-cuadrilla");
+  });
+
+  historyFromInput.addEventListener("input", renderHistory);
+  historyToInput.addEventListener("input", renderHistory);
+  exportButton.addEventListener("click", exportState);
+
+  window.addEventListener("online", updateConnectivityUI);
+  window.addEventListener("offline", updateConnectivityUI);
+}
+
+function render() {
+  const derived = getDerivedData(state.currentHunt);
+
+  heroHuntTitle.textContent = state.currentHunt.huntTitle;
+  heroHuntMeta.textContent = `${state.currentHunt.squadName} · ${state.currentHunt.location || "Lugar pendiente"}`;
+  totalCaptures.textContent = String(derived.totalCaptures);
+  topHunter.textContent = derived.topHunterName;
+  timelineCaption.textContent = state.currentHunt.captures.length
+    ? "Actualizada al instante y guardada en este dispositivo"
+    : "Todavía no hay capturas en esta batida";
+
+  squadNameInput.value = state.currentHunt.squadName;
+  huntTitleInput.value = state.currentHunt.huntTitle;
+  huntLocationInput.value = state.currentHunt.location;
+  huntDateInput.value = state.currentHunt.huntDate;
+
+  renderHunterList(derived.hunterTotals);
+  renderHunterSelect();
+  renderSummary(derived.speciesTotals);
+  renderTimeline();
+  renderHistory();
+  syncAnimalSelection();
+  syncCaptureAvailability();
+}
+
+function renderHunterList(hunterTotals) {
+  hunterList.innerHTML = "";
+  hunterEmpty.hidden = state.currentHunt.hunters.length > 0;
+
+  state.currentHunt.hunters.forEach((hunter) => {
+    const node = hunterCardTemplate.content.firstElementChild.cloneNode(true);
+    const total = hunterTotals.get(hunter.id)?.count || 0;
+    const badge = hunterTotals.get(hunter.id)?.lastAnimal || "Sin piezas";
+    const avatar = node.querySelector(".hunter-card__avatar");
+
+    node.dataset.hunterId = hunter.id;
+    node.classList.toggle("is-selected", hunter.id === state.currentHunt.selectedHunterId);
+
+    if (hunter.photo) {
+      const img = document.createElement("img");
+      img.src = hunter.photo;
+      img.alt = `Foto de ${hunter.name}`;
+      avatar.replaceChildren(img);
+    } else {
+      avatar.textContent = getInitials(hunter.name);
+    }
+
+    node.querySelector("strong").textContent = hunter.name;
+    node.querySelector(".hunter-card__count").textContent = String(total);
+    node.querySelector(".hunter-card__badge").textContent = badge;
+    hunterList.append(node);
+  });
+}
+
+function renderHunterSelect() {
+  hunterSelect.innerHTML = "";
+
+  state.currentHunt.hunters.forEach((hunter) => {
+    const option = document.createElement("option");
+    option.value = hunter.id;
+    option.textContent = hunter.name;
+    hunterSelect.append(option);
+  });
+
+  const selected = state.currentHunt.hunters.find((hunter) => hunter.id === state.currentHunt.selectedHunterId);
+  hunterSelect.value = selected?.id || state.currentHunt.hunters[0]?.id || "";
+}
+
+function renderSummary(speciesTotals) {
+  summaryGrid.innerHTML = "";
+
+  SPECIES.forEach((animal) => {
+    const node = summaryCardTemplate.content.firstElementChild.cloneNode(true);
+    const total = speciesTotals[animal] || 0;
+
+    node.querySelector("span").textContent = animal;
+    node.querySelector("strong").textContent = String(total);
+    node.querySelector("small").textContent = getSpeciesHint(animal, total);
+    summaryGrid.append(node);
+  });
+}
+
+function renderTimeline() {
+  timelineList.innerHTML = "";
+
+  if (!state.currentHunt.captures.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "Todavía no hay piezas registradas en la batida actual.";
+    timelineList.append(empty);
+    return;
+  }
+
+  state.currentHunt.captures.slice(0, 12).forEach((capture) => {
+    const node = timelineItemTemplate.content.firstElementChild.cloneNode(true);
+    const animalLabel = formatAnimalLabel(capture.animal, capture.count);
+    const photo = node.querySelector(".timeline__photo");
+
+    node.querySelector(".timeline__time").textContent = formatTime(capture.timestamp);
+    node.querySelector("strong").textContent = capture.hunterName;
+    node.querySelector("p").textContent = capture.notes
+      ? `registró ${capture.count} ${animalLabel} y anotó: ${capture.notes}`
+      : `registró ${capture.count} ${animalLabel} en la batida`;
+
+    if (capture.photo) {
+      photo.src = capture.photo;
+      photo.hidden = false;
+    }
+
+    timelineList.append(node);
+  });
+}
+
+function renderHistory() {
+  historyList.innerHTML = "";
+
+  const from = historyFromInput.value || "";
+  const to = historyToInput.value || "";
+  const filteredHistory = state.history.filter((entry) => {
+    const entryDate = entry.huntDate || "";
+    if (from && entryDate < from) {
+      return false;
+    }
+    if (to && entryDate > to) {
+      return false;
+    }
+    return true;
+  });
+
+  historyEmpty.hidden = filteredHistory.length > 0;
+
+  if (!selectedHistoryId && filteredHistory.length > 0) {
+    selectedHistoryId = filteredHistory[0].id;
+  }
+  if (selectedHistoryId && !filteredHistory.some((entry) => entry.id === selectedHistoryId)) {
+    selectedHistoryId = filteredHistory[0]?.id || "";
+  }
+
+  filteredHistory.forEach((entry) => {
+    const node = historyItemTemplate.content.firstElementChild.cloneNode(true);
+    node.dataset.historyId = entry.id;
+    node.classList.toggle("is-selected", entry.id === selectedHistoryId);
+    node.querySelector("strong").textContent = entry.huntTitle;
+    node.querySelector("small").textContent = `${entry.squadName} · ${formatDate(entry.huntDate)} · ${entry.location || "Sin lugar"} · ${entry.topHunter || "Sin líder"}`;
+    node.querySelector(".history-card__total").textContent = `${entry.totalCaptures} piezas`;
+    node.addEventListener("click", () => {
+      selectedHistoryId = entry.id;
+      renderHistory();
+    });
+    historyList.append(node);
+  });
+
+  renderHistoryDetail(filteredHistory.find((entry) => entry.id === selectedHistoryId) || null);
+}
+
+function syncCaptureAvailability() {
+  const hasHunters = state.currentHunt.hunters.length > 0;
+  const captureElements = captureForm.querySelectorAll("select, textarea, input, button");
+
+  captureElements.forEach((element) => {
+    element.disabled = !hasHunters;
+  });
+
+  captureStatusPill.textContent = hasHunters
+    ? navigator.onLine
+      ? "Listo para campo"
+      : "Modo sin conexión"
+    : "Añade un cazador primero";
+}
+
+function activatePanel(targetId) {
+  segmentedButtons.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.panelTarget === targetId);
+  });
+
+  bottomNavButtons.forEach((button) => {
+    button.classList.toggle("is-active", button.dataset.panelTarget === targetId);
+  });
+
+  panels.forEach((panel) => {
+    panel.classList.toggle("is-active", panel.id === targetId);
+  });
+}
+
+function startEditingHunter(hunterId) {
+  const hunter = state.currentHunt.hunters.find((item) => item.id === hunterId);
+  if (!hunter) {
+    return;
+  }
+
+  hunterIdInput.value = hunter.id;
+  hunterNameInput.value = hunter.name;
+  pendingHunterPhoto = hunter.photo || "";
+  updateImagePreview(hunterPhotoPreview, hunterPhotoPreviewImage, pendingHunterPhoto, "Vista previa del cazador");
+  hunterSubmit.textContent = "Guardar cazador";
+  hunterCancel.hidden = false;
+  hunterNameInput.focus();
+}
+
+function deleteHunter(hunterId) {
+  state.currentHunt.hunters = state.currentHunt.hunters.filter((hunter) => hunter.id !== hunterId);
+  state.currentHunt.captures = state.currentHunt.captures.filter((capture) => capture.hunterId !== hunterId);
+
+  if (state.currentHunt.selectedHunterId === hunterId) {
+    state.currentHunt.selectedHunterId = state.currentHunt.hunters[0]?.id || "";
+  }
+
+  resetHunterForm();
+  persistAndRender();
+}
+
+function resetHunterForm() {
+  hunterForm.reset();
+  hunterIdInput.value = "";
+  pendingHunterPhoto = "";
+  hunterSubmit.textContent = "Añadir cazador";
+  hunterCancel.hidden = true;
+  updateImagePreview(hunterPhotoPreview, hunterPhotoPreviewImage, "", "Vista previa del cazador");
+}
+
+function resetCaptureForm() {
+  captureForm.reset();
+  countInput.value = "1";
+  pendingCapturePhoto = "";
+  selectedAnimal = "Jabalí";
+  updateImagePreview(capturePhotoPreview, capturePhotoPreviewImage, "", "Vista previa de la captura");
+  syncAnimalSelection();
+}
+
+function syncAnimalSelection() {
+  animalChips.forEach((chip) => {
+    chip.classList.toggle("is-selected", chip.dataset.animal === selectedAnimal);
+  });
+}
+
+function getDerivedData(hunt) {
+  const hunterTotals = new Map();
+  const speciesTotals = Object.fromEntries(SPECIES.map((animal) => [animal, 0]));
+  let totalCapturesCount = 0;
+
+  hunt.hunters.forEach((hunter) => {
+    hunterTotals.set(hunter.id, { count: 0, lastAnimal: "Sin piezas" });
+  });
+
+  hunt.captures.forEach((capture) => {
+    totalCapturesCount += capture.count;
+    speciesTotals[capture.animal] = (speciesTotals[capture.animal] || 0) + capture.count;
+
+    const current = hunterTotals.get(capture.hunterId) || { count: 0, lastAnimal: "Sin piezas" };
+    current.count += capture.count;
+    current.lastAnimal = capture.animal;
+    hunterTotals.set(capture.hunterId, current);
+  });
+
+  let topHunterName = "Sin dato";
+  let topHunterTotal = -1;
+  hunt.hunters.forEach((hunter) => {
+    const current = hunterTotals.get(hunter.id);
+    if (current && current.count > topHunterTotal) {
+      topHunterTotal = current.count;
+      topHunterName = current.count > 0 ? hunter.name.split(" ")[0] : "Sin dato";
+    }
+  });
+
+  return {
+    hunterTotals,
+    speciesTotals,
+    totalCaptures: totalCapturesCount,
+    topHunterName
+  };
+}
+
+function persistAndRender() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  render();
+  storagePill.textContent = "Guardado local activo";
+}
+
+function loadState() {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved) {
+    try {
+      return normalizeState(JSON.parse(saved));
+    } catch (error) {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const hunters = [
+    { id: createId(), name: "Iván Salas", photo: "" },
+    { id: createId(), name: "Lucía Ríos", photo: "" },
+    { id: createId(), name: "Diego Pardo", photo: "" },
+    { id: createId(), name: "Nora Vega", photo: "" }
+  ];
+
+  return {
+    currentHunt: {
+      squadName: "Cuadrilla Sierra Norte",
+      huntTitle: "Batida de Los Llanos",
+      location: "Sierra de Gredos",
+      huntDate: today,
+      selectedHunterId: hunters[0].id,
+      hunters,
+      captures: [
+        createSeedCapture(hunters[0], "Jabalí", 1, "vaguada norte", today, "09:12"),
+        createSeedCapture(hunters[1], "Zorro", 1, "paso bajo", today, "08:47"),
+        createSeedCapture(hunters[3], "Cabra", 2, "ladera este", today, "08:11")
+      ]
+    },
+    history: []
+  };
+}
+
+function normalizeState(rawState) {
+  if (rawState.currentHunt) {
+    rawState.currentHunt.hunters = (rawState.currentHunt.hunters || []).map((hunter) => ({
+      id: hunter.id || createId(),
+      name: hunter.name || "Cazador",
+      photo: hunter.photo || ""
+    }));
+    rawState.currentHunt.captures = (rawState.currentHunt.captures || []).map((capture) => ({
+      ...capture,
+      id: capture.id || createId(),
+      hunterPhoto: capture.hunterPhoto || "",
+      photo: capture.photo || ""
+    }));
+    rawState.history = (rawState.history || []).map((entry) => ({
+      ...entry,
+      id: entry.id || createId(),
+      hunters: entry.hunters || [],
+      captures: entry.captures || []
+    }));
+    return rawState;
+  }
+
+  return {
+    currentHunt: {
+      squadName: rawState.squadName || "Cuadrilla",
+      huntTitle: rawState.huntTitle || "Batida actual",
+      location: rawState.location || "",
+      huntDate: rawState.huntDate || new Date().toISOString().slice(0, 10),
+      selectedHunterId: rawState.selectedHunterId || rawState.hunters?.[0]?.id || "",
+      hunters: (rawState.hunters || []).map((hunter) => ({
+        id: hunter.id || createId(),
+        name: hunter.name || "Cazador",
+        photo: hunter.photo || ""
+      })),
+      captures: (rawState.captures || []).map((capture) => ({
+        ...capture,
+        id: capture.id || createId(),
+        hunterPhoto: capture.hunterPhoto || "",
+        photo: capture.photo || ""
+      }))
+    },
+    history: rawState.history || []
+  };
+}
+
+function createSeedCapture(hunter, animal, count, notes, date, time) {
+  return {
+    id: createId(),
+    hunterId: hunter.id,
+    hunterName: hunter.name,
+    hunterPhoto: hunter.photo || "",
+    animal,
+    count,
+    notes,
+    photo: "",
+    timestamp: `${date}T${time}:00`
+  };
+}
+
+function createEmptyCurrentHunt(existingHunters) {
+  const clonedHunters = existingHunters.map((hunter) => ({ ...hunter }));
+  return {
+    squadName: state.currentHunt.squadName,
+    huntTitle: "Nueva batida",
+    location: "",
+    huntDate: new Date().toISOString().slice(0, 10),
+    selectedHunterId: clonedHunters[0]?.id || "",
+    hunters: clonedHunters,
+    captures: []
+  };
+}
+
+function updateConnectivityUI() {
+  const online = navigator.onLine;
+  connectionPill.textContent = online ? "Con cobertura" : "Sin conexión";
+  connectionPill.classList.toggle("status-pill--offline", !online);
+  captureStatusPill.textContent = state.currentHunt.hunters.length
+    ? online
+      ? "Listo para campo"
+      : "Modo sin conexión"
+    : "Añade un cazador primero";
+}
+
+async function registerServiceWorker() {
+  if (!("serviceWorker" in navigator)) {
+    storagePill.textContent = "Este navegador no soporta PWA";
+    return;
+  }
+
+  try {
+    await navigator.serviceWorker.register("./service-worker.js");
+    storagePill.textContent = "PWA lista y guardado local activo";
+  } catch (error) {
+    storagePill.textContent = "Guardado local activo";
+  }
+}
+
+function renderHistoryDetail(entry) {
+  historyDetail.innerHTML = "";
+  historyDetail.hidden = !entry;
+  if (!entry) {
+    return;
+  }
+
+  const node = historyDetailTemplate.content.firstElementChild.cloneNode(true);
+  node.querySelector(".history-detail-card__title").textContent = entry.huntTitle;
+  node.querySelector(".history-detail-card__badge").textContent = `${entry.totalCaptures} piezas`;
+  node.querySelector(".history-detail-card__meta").textContent = `${entry.squadName} · ${formatDate(entry.huntDate)} · ${entry.location || "Sin lugar"} · Guardada ${formatDateTime(entry.savedAt)}`;
+
+  const summaryContainer = node.querySelector(".history-detail-card__summary");
+  SPECIES.forEach((animal) => {
+    const card = summaryCardTemplate.content.firstElementChild.cloneNode(true);
+    const total = entry.speciesTotals?.[animal] || 0;
+    card.querySelector("span").textContent = animal;
+    card.querySelector("strong").textContent = String(total);
+    card.querySelector("small").textContent = getSpeciesHint(animal, total);
+    summaryContainer.append(card);
+  });
+
+  const derived = getDerivedData({
+    hunters: entry.hunters || [],
+    captures: entry.captures || []
+  });
+
+  const huntersContainer = node.querySelector(".history-detail-card__hunters");
+  (entry.hunters || []).forEach((hunter) => {
+    const row = document.createElement("article");
+    row.className = "history-detail-row";
+    const hunterTotal = derived.hunterTotals.get(hunter.id);
+    row.innerHTML = `<strong>${hunter.name}</strong><p>${hunterTotal?.count || 0} capturas · ${hunterTotal?.lastAnimal || "Sin piezas"}</p>`;
+    huntersContainer.append(row);
+  });
+
+  const capturesContainer = node.querySelector(".history-detail-card__captures");
+  (entry.captures || []).slice(0, 8).forEach((capture) => {
+    const row = document.createElement("article");
+    row.className = "history-detail-row";
+    const animalLabel = formatAnimalLabel(capture.animal, capture.count);
+    row.innerHTML = `<strong>${capture.hunterName}</strong><p>${formatTime(capture.timestamp)} · ${capture.count} ${animalLabel}${capture.notes ? ` · ${capture.notes}` : ""}</p>`;
+    capturesContainer.append(row);
+  });
+
+  historyDetail.append(node);
+}
+
+function showSettingsFeedback() {
+  settingsFeedback.hidden = false;
+  settingsFeedback.textContent = `Cambios guardados · ${new Date().toLocaleTimeString("es-ES", {
+    hour: "2-digit",
+    minute: "2-digit"
+  })}`;
+
+  if (settingsFeedbackTimeout) {
+    clearTimeout(settingsFeedbackTimeout);
+  }
+
+  settingsFeedbackTimeout = setTimeout(() => {
+    settingsFeedback.hidden = true;
+  }, 2400);
+}
+
+function exportState() {
+  const summary = getDerivedData(state.currentHunt);
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    ...state,
+    summary: {
+      totalCaptures: summary.totalCaptures,
+      topHunterName: summary.topHunterName,
+      speciesTotals: summary.speciesTotals
+    }
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `rastrocaza-${state.currentHunt.huntDate || "batida"}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+async function readImageInput(input, maxSize) {
+  const file = input.files?.[0];
+  if (!file) {
+    return "";
+  }
+
+  return resizeImage(file, maxSize);
+}
+
+function updateImagePreview(container, image, src, alt) {
+  container.hidden = !src;
+  if (!src) {
+    image.removeAttribute("src");
+    return;
+  }
+
+  image.src = src;
+  image.alt = alt;
+}
+
+function resizeImage(file, maxSize) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const ratio = Math.min(maxSize / img.width, maxSize / img.height, 1);
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * ratio);
+        canvas.height = Math.round(img.height * ratio);
+
+        const context = canvas.getContext("2d");
+        if (!context) {
+          resolve(String(reader.result || ""));
+          return;
+        }
+
+        context.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.82));
+      };
+
+      img.src = String(reader.result || "");
+    };
+    reader.onerror = () => resolve("");
+    reader.readAsDataURL(file);
+  });
+}
+
+function getInitials(name) {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || "")
+    .join("");
+}
+
+function getSpeciesHint(animal, total) {
+  if (total === 0) {
+    return "Sin registros en esta batida";
+  }
+
+  if (animal === "Jabalí") {
+    return "Especie más habitual";
+  }
+
+  if (animal === "Zorro") {
+    return "Control de depredador";
+  }
+
+  if (animal === "Cabra") {
+    return "Zona de ladera";
+  }
+
+  return "Capturas puntuales";
+}
+
+function formatAnimalLabel(animal, count) {
+  const singular = animal.toLowerCase();
+  if (count === 1) {
+    return singular;
+  }
+
+  if (animal === "Jabalí") {
+    return "jabalíes";
+  }
+
+  if (animal === "Zorro") {
+    return "zorros";
+  }
+
+  if (animal === "Cabra") {
+    return "cabras";
+  }
+
+  if (animal === "Ciervo") {
+    return "ciervos";
+  }
+
+  return `${singular}s`;
+}
+
+function formatTime(isoString) {
+  return new Date(isoString).toLocaleTimeString("es-ES", {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function formatDate(isoDate) {
+  return new Date(isoDate).toLocaleDateString("es-ES", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  });
+}
+
+function formatDateTime(isoString) {
+  return new Date(isoString).toLocaleString("es-ES", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function createId() {
+  if (window.crypto && "randomUUID" in window.crypto) {
+    return window.crypto.randomUUID();
+  }
+
+  return `rc-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
